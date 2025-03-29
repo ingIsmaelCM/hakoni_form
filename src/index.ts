@@ -1,3 +1,4 @@
+import { FormBuilder } from './form.builder';
 import { FormConfig, FormState, FormSubmitData, Category } from './types';
 
 class HakoniForm {
@@ -29,28 +30,19 @@ class HakoniForm {
 
   private init(): void {
     this.render();
-    this.attachEventListeners();
   }
 
   private render(): void {
-    const formHtml = `
-      <form class="hakoni-form">
-        <div class="form-group">
-          <label for="category">Select Category:</label>
-          <select id="category" name="category" required>
-            <option value="">Choose a category...</option>
-            ${this.categories.map(category =>
-      `<option value="${category._id}">${category.name}</option>`
-    ).join('')}
-          </select>
-        </div>
-        <button type="submit" class="submit-button">Enviar</button>
-        ${this.state.error ? `<div class="error">${this.state.error}</div>` : ''}
-      </form>
-    `;
-
-    this.container.innerHTML = formHtml;
+    const formHtml = new FormBuilder({
+      fields: this.config.fields || {},
+      formTitle: this.config.formTitle,
+      buttonLabel: this.config.buttonLabel,
+      categories: this.categories
+    }).build();
+    this.container.innerHTML = '';
+    this.container.appendChild(formHtml);
     this.form = this.container.querySelector('form');
+    this.attachEventListeners();
   }
 
   private async getCategories() {
@@ -71,35 +63,45 @@ class HakoniForm {
 
   private attachEventListeners(): void {
     if (!this.form) return;
-
-    this.form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      await this.handleSubmit();
-    });
-
-    const categorySelect = this.form.querySelector('#category');
-    if (categorySelect) {
-      categorySelect.addEventListener('change', (e) => {
-        const target = e.target as HTMLSelectElement;
-        this.state.selectedCategory = target.value;
+    const button = this.form.querySelector('#hakoni_form_submit');
+    if (button) {
+      button.addEventListener('click', async (e) => {
+        console.log(e);
+        e.preventDefault();
+        await this.handleSubmit();
       });
     }
   }
 
   private async handleSubmit(): Promise<void> {
-    if (this.state.isSubmitting || !this.state.selectedCategory) return;
 
-    this.state.isSubmitting = true;
-    this.state.error = null;
-    this.render();
 
-    const submitData: FormSubmitData = {
-      tenantId: this.state.tenantId,
-      categoryId: this.state.selectedCategory,
-      timestamp: Date.now()
-    };
 
     try {
+      if (this.state.isSubmitting || !this.form) return;
+      this.state.isSubmitting = true;
+      //validate form 
+      const form = this.form as HTMLFormElement;
+      if (!form.checkValidity()) {
+        this.state.error = 'Form is not valid';
+        console.log(this.state.error);
+        this.state.isSubmitting = false;
+        return;
+      }
+
+      const formData = new FormData(this.form);
+
+      const submitData: FormSubmitData = {
+        name: formData.get('name') as string,
+        email: formData.get('email') as string,
+        subject: formData.get('subject') as string,
+        category: formData.get('category') as string,
+        message: formData.get('message') as string,
+        tenantId: this.state.tenantId,
+        timestamp: Date.now()
+      };
+
+      console.log(submitData);
       const response = await fetch(this.apiUrl + 'tickets/submit', {
         method: 'POST',
         headers: {
