@@ -1,5 +1,6 @@
+import { FileHandler } from './file.handler';
 import { FormBuilder } from './form.builder';
-import { FormConfig, FormState, FormSubmitData, Category } from './types';
+import { FormConfig, FormState, FormSubmitData, Category, MediaFile, Field, FormField } from './types';
 
 class HakoniForm {
   private config: FormConfig;
@@ -8,6 +9,17 @@ class HakoniForm {
   private form: HTMLFormElement | null = null;
   private categories: Category[] = [];
   private apiUrl = process.env.API_URL || '';
+  private fileHandler: FileHandler | null = null;
+  private formBuilder: FormBuilder | null = null;
+  private formData: FormSubmitData = {
+    tenantId: '',
+    name: '',
+    email: '',
+    subject: '',
+    category: '',
+    message: '',
+    attachments: []
+  };
 
 
   constructor(config: FormConfig) {
@@ -21,10 +33,13 @@ class HakoniForm {
       selectedCategory: null,
       tenantId: config.tenantId,
       isSubmitting: false,
-      error: null
+      error: {}
     };
     this.getCategories().then(() => {
       this.init();
+      this.fileHandler = new FileHandler();
+      this.fileHandler.init();
+
     });
   }
 
@@ -33,12 +48,13 @@ class HakoniForm {
   }
 
   private render(): void {
-    const formHtml = new FormBuilder({
+    this.formBuilder = new FormBuilder({
       fields: this.config.fields || {},
       formTitle: this.config.formTitle,
       buttonLabel: this.config.buttonLabel,
       categories: this.categories
-    }).build();
+    });
+    const formHtml = this.formBuilder.build();
     this.container.innerHTML = '';
     this.container.appendChild(formHtml);
     this.form = this.container.querySelector('form');
@@ -54,7 +70,6 @@ class HakoniForm {
 
         },
       });
-      console.log(response);
       this.categories = await response.json();
     } catch (error) {
       console.error(error);
@@ -66,64 +81,77 @@ class HakoniForm {
     const button = this.form.querySelector('#hakoni_form_submit');
     if (button) {
       button.addEventListener('click', async (e) => {
-        console.log(e);
         e.preventDefault();
         await this.handleSubmit();
       });
     }
   }
 
+
+  private fillData() {
+    const formData = new FormData(this.form!);
+    const submitData: FormSubmitData = {
+      name: formData.get('name') as string,
+      email: formData.get('email') as string,
+      subject: formData.get('subject') as string,
+      category: formData.get('category') as string,
+      message: formData.get('message') as string,
+      tenantId: this.state.tenantId,
+      attachments: this.fileHandler?.getSelectedFiles() || [],
+    };
+    this.formData = submitData;
+  }
+
+  private validateForm(): boolean {
+    const fields = this.formBuilder!.getFields();
+    Object.keys(fields).forEach(key => {
+      const field: Field = fields[key as keyof FormField];
+      const value: string | MediaFile[] = this.formData[key as keyof FormSubmitData];
+      const label: HTMLLabelElement | null = this.form?.querySelector(`label[for="${field.id}"]`) || null;
+      if (field.required && !field.hidden && !value?.length) {
+        label?.classList.add('hakoni_form_error');
+        this.state.error[key] = `${field.label} is required`;
+      } else {
+        label?.classList.remove('hakoni_form_error');
+      }
+    });
+    return !Object.keys(this.state.error).length;
+  }
+
   private async handleSubmit(): Promise<void> {
-
-
-
+    const loaderContainer = document.querySelector('#hakoni_form_loader_container') as HTMLDivElement;
     try {
       if (this.state.isSubmitting || !this.form) return;
-      this.state.isSubmitting = true;
-      //validate form 
-      const form = this.form as HTMLFormElement;
-      if (!form.checkValidity()) {
-        this.state.error = 'Form is not valid';
-        console.log(this.state.error);
-        this.state.isSubmitting = false;
-        return;
-      }
-
-      const formData = new FormData(this.form);
-
-      const submitData: FormSubmitData = {
-        name: formData.get('name') as string,
-        email: formData.get('email') as string,
-        subject: formData.get('subject') as string,
-        category: formData.get('category') as string,
-        message: formData.get('message') as string,
-        tenantId: this.state.tenantId,
-        timestamp: Date.now()
+      this.fillData();
+      if (!this.validateForm()) {
+        throw this.state.error;
       };
-
-      console.log(submitData);
+      this.state.isSubmitting = true;
+      if (loaderContainer) {
+        loaderContainer.style.display = 'flex';
+      }
       const response = await fetch(this.apiUrl + 'tickets/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(submitData)
+        body: JSON.stringify(this.formData)
       });
 
       if (!response.ok) {
         throw new Error('Failed to submit form');
       }
-
-      // Reset form after successful submission
-      this.state.selectedCategory = null;
-      this.form?.reset();
+      // this.form?.reset();
     } catch (error) {
-      this.state.error = error instanceof Error ? error.message : 'An error occurred';
+      throw error instanceof Error ? error.message : error;
     } finally {
       this.state.isSubmitting = false;
-      this.render();
+      if (loaderContainer) {
+        loaderContainer.style.display = 'none';
+      }
     }
   }
+
 }
 
 export function createHakoniForm(config: FormConfig): HakoniForm {

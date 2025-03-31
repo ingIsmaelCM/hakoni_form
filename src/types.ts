@@ -26,6 +26,7 @@ export interface FormField {
   subject: Field;
   category: Field;
   message: Field;
+  attachments: Field;
 }
 
 export interface FormOption {
@@ -39,7 +40,7 @@ export interface FormState {
   selectedCategory: string | null;
   tenantId: string;
   isSubmitting: boolean;
-  error: string | null;
+  error: Record<string, string>;
 }
 
 export interface FormSubmitData {
@@ -49,6 +50,14 @@ export interface FormSubmitData {
   subject: string;
   category: string;
   message: string;
-  timestamp: number;
+  attachments: MediaFile[];
 }
 
+
+export type MediaFile = {
+  name: string;
+  size: number;
+  extension: string;
+  url: string;
+  type: string;
+}

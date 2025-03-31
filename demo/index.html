@@ -12,7 +12,12 @@
     <script>
         const config = {
             containerSelector: '#hakoni-form-container',
-            tenantId: '67e1293de89fe206ac3d8474'
+            tenantId: '67e1293de89fe206ac3d8474',
+            fields:{
+                attachments:{
+                    required: false
+                },
+            }
         };
 
         const form = HakoniForm.createHakoniForm(config);
